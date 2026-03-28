@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM 文字冒險 RPG (自訂世界版 + Markdown + 自動存檔)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+        /* ==========================================
+           1. CSS 變數定義 (核心：一鍵換色)
+           ========================================== */
+        :root {
+            --body-bg: #f4f4f7;          
+            --win-bg: #ffffff;           
+            --text-main: #333333;        
+            --text-muted: #8c8c8c;       
+            --border-color: #e8e8e8;     
+            --input-bg: #ffffff;         
+            --input-border: #d9d9d9;     
+            --accent-color: #1890ff;     
+            --accent-hover: #40a9ff;
+            --user-msg-bg: var(--accent-color);
+            --user-msg-text: #ffffff;
+            --ai-msg-bg: #f0f2f5;
+            --btn-secondary-bg: #ffffff;
+            --btn-secondary-text: #555555;
+            --btn-secondary-border: #ddd;
+            --scrollbar-track: #f0f0f0;
+            --scrollbar-thumb: #cdcdcd;
+            --box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        body.dark-theme {
+            --body-bg: #121212;          
+            --win-bg: #1e1e1e;           
+            --text-main: #e0e0e0;        
+            --text-muted: #aaaaaa;       
+            --border-color: #333333;     
+            --input-bg: #050505;
+            --input-border: #444444;
+            --accent-color: #ffffff;     
+            --accent-hover: #cccccc;
+            --user-msg-bg: #444444;      
+            --user-msg-text: #ffffff;
+            --ai-msg-bg: #2d2d2d;        
+            --btn-secondary-bg: #2d2d2d;
+            --btn-secondary-text: #e0e0e0;
+            --btn-secondary-border: #444;
+            --scrollbar-track: #1a1a1a;
+            --scrollbar-thumb: #555555;
+            --box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        /* ==========================================
+           2. 基礎樣式與控制面板
+           ========================================== */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+        ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a0a0a0; }
+
+        body {
+            font-family: "PingFang TC", "Heiti TC", "Microsoft JhengHei", sans-serif;
+            background-color: var(--body-bg);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+            transition: background-color 0.3s ease, color 0.3s ease;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        #control-panel {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+        .ctrl-btn {
+            background-color: var(--btn-secondary-bg);
+            color: var(--btn-secondary-text);
+            border: 1px solid var(--btn-secondary-border);
+            padding: 6px 12px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .ctrl-btn:hover { background-color: var(--ai-msg-bg); border-color: var(--text-muted); }
+        #theme-toggle-btn { border-color: var(--accent-color); color: var(--accent-color); }
+        #theme-toggle-btn:hover { background-color: var(--accent-color); color: var(--user-msg-text); }
+        #restart-btn:hover { background-color: #fff1f0; border-color: #ffa39e; color: #cf1322; }
+
+        /* ==========================================
+           3. 設定面板與對話視窗
+           ========================================== */
+        #setup-panel {
+            background-color: var(--win-bg);
+            border: 1px solid var(--border-color);
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: var(--box-shadow);
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        #setup-panel h2 { margin-top: 0; margin-bottom: 5px; color: var(--text-main); }
+        .setup-group { display: flex; flex-direction: column; gap: 6px; }
+        .setup-group label { font-weight: bold; font-size: 14px; color: var(--text-main); }
+        .setup-group input, .setup-group textarea {
+            padding: 10px; background-color: var(--input-bg); color: var(--text-main);
+            border: 1px solid var(--input-border); border-radius: 4px; font-family: inherit; font-size: 14px; resize: vertical;
+        }
+        .setup-group input:focus, .setup-group textarea:focus { outline: none; border-color: var(--accent-color); }
+        .setup-buttons { display: flex; gap: 10px; margin-top: 10px; }
+        .primary-btn { flex: 1; padding: 12px; background-color: var(--accent-color); color: var(--user-msg-text); border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 16px; transition: background-color 0.2s; }
+        .primary-btn:hover { background-color: var(--accent-hover); }
+        .secondary-btn { flex: 1; padding: 12px; background-color: transparent; color: var(--text-main); border: 1px solid var(--text-muted); border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 16px; transition: all 0.2s; }
+        .secondary-btn:hover { background-color: var(--ai-msg-bg); border-color: var(--text-main); }
+
+        #game-window {
+            flex-grow: 1; background-color: var(--win-bg); border: 1px solid var(--border-color); padding: 25px; overflow-y: auto; margin-bottom: 20px; box-shadow: var(--box-shadow); border-radius: 8px; display: none; 
+        }
+
+        .message { margin-bottom: 20px; line-height: 1.8; animation: fadeIn 0.3s ease-out; max-width: 85%; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        strong.prefix { display: inline-block; margin-right: 8px; font-weight: 600; margin-bottom: 4px; }
+        .user-msg { color: var(--user-msg-text); background-color: var(--user-msg-bg); padding: 10px 15px; border-radius: 8px 8px 0 8px; margin-left: auto; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .user-msg strong.prefix { color: rgba(255,255,255,0.7); display: block; font-size: 12px; margin-bottom: 2px;}
+        .ai-msg { color: var(--text-main); background-color: var(--ai-msg-bg); padding: 10px 15px; border-radius: 8px 8px 8px 0; }
+        .ai-msg strong.prefix { color: var(--text-muted); display: block; font-size: 12px; margin-bottom: 2px;}
+        .system-msg { color: var(--text-muted); font-size: 13px; text-align: center; max-width: 100%; margin-top: 10px; margin-bottom: 10px; }
+        .system-msg strong.prefix { display: none; } 
+        .system-msg span.content { background-color: rgba(0,0,0,0.03); padding: 2px 8px; border-radius: 4px; }
+        body.dark-theme .system-msg span.content { background-color: rgba(255,255,255,0.05); }
+        
+        /* Markdown 內容專用樣式 */
+        .content { display: block; word-break: break-word; }
+        .content p { margin: 0 0 10px 0; }
+        .content p:last-child { margin-bottom: 0; }
+        .content ul, .content ol { margin: 0 0 10px 0; padding-left: 20px; }
+        .content li { margin-bottom: 5px; }
+        .content h1, .content h2, .content h3, .content h4 { margin: 15px 0 10px 0; font-size: 1.1em; color: var(--accent-color); }
+        .content h1:first-child, .content h2:first-child, .content h3:first-child { margin-top: 0; }
+        .content blockquote { border-left: 4px solid var(--accent-color); margin: 10px 0; padding: 5px 15px; color: var(--text-muted); background: rgba(0,0,0,0.02); border-radius: 0 4px 4px 0;}
+        body.dark-theme .content blockquote { background: rgba(255,255,255,0.05); }
+        .content code { background-color: rgba(128,128,128,0.15); padding: 2px 6px; border-radius: 4px; font-family: monospace; color: #d63384;}
+        body.dark-theme .content code { color: #ff85c0; }
+
+        #input-area {
+            display: none; gap: 12px; padding: 10px; background-color: var(--win-bg); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: var(--box-shadow);
+        }
+        #player-input { flex-grow: 1; padding: 12px; background-color: var(--input-bg); color: var(--text-main); border: 1px solid var(--input-border); font-family: inherit; font-size: 16px; border-radius: 4px; }
+        #player-input:focus { outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.15); }
+        #player-input::placeholder { color: var(--text-muted); opacity: 0.6; }
+        #send-btn { padding: 0 25px; background-color: var(--accent-color); color: var(--user-msg-text); border: none; cursor: pointer; font-weight: bold; font-size: 16px; border-radius: 4px; }
+        #send-btn:hover { background-color: var(--accent-hover); }
+        #send-btn:disabled { background-color: var(--input-border); color: var(--text-muted); cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+    <div id="control-panel">
+        <button id="theme-toggle-btn" class="ctrl-btn">🌙 切換模式</button>
+        <button id="save-btn" class="ctrl-btn" style="display:none;">💾 儲存</button>
+        <button id="load-btn" class="ctrl-btn">📂 讀取</button>
+        <button id="restart-btn" class="ctrl-btn" style="display:none;">🗑️ 重設世界</button>
+    </div>
+
+    <div id="setup-panel">
+        <h2>📜 創建你的冒險世界</h2>
+        <div class="setup-group">
+            <label>🌌 世界觀 (背景、年代、魔法/科技程度)</label>
+            <textarea id="setup-world" rows="2" placeholder="例如：中世紀高魔奇幻大陸，巨龍與精靈共存..."></textarea>
+        </div>
+        <div class="setup-group">
+            <label>👤 角色設定 (身分、職業、性格、外貌)</label>
+            <textarea id="setup-persona" rows="2" placeholder="例如：被放逐的落魄貴族騎士，左眼帶著刀疤..."></textarea>
+        </div>
+        <div class="setup-group">
+            <label>🐾 隨從 / 同伴 (可選)</label>
+            <input type="text" id="setup-companion" placeholder="例如：一隻會說話且性格毒舌的黑貓">
+        </div>
+        <div class="setup-group">
+            <label>🎒 初始隨身物品</label>
+            <input type="text" id="setup-items" placeholder="例如：一把生鏽的家傳鐵劍、半瓶水、神秘的地圖">
+        </div>
+        <div class="setup-buttons">
+            <button id="auto-gen-btn" class="secondary-btn">🎲 一鍵隨機生成</button>
+            <button id="start-adv-btn" class="primary-btn">⚔️ 開始冒險</button>
+        </div>
+    </div>
+
+    <div id="game-window"></div>
+    
+    <div id="input-area">
+        <input type="text" id="player-input" placeholder="接下來要做什麼...？" autocomplete="off">
+        <button id="send-btn">執行</button>
+    </div>
+
+    <script>
+        // 設定 marked.js 的一些安全與格式選項
+        marked.setOptions({ breaks: true, gfm: true });
+
+        const API_KEY = 'sk-2f572c294499474eac3e9158261c1352'; // 請換成你的 API Key
+        const API_URL = 'https://api.deepseek.com/chat/completions'; 
+        const MODEL_NAME = 'deepseek-chat'; 
+        const SAVE_KEY = 'LLM_RPG_SAVE_DATA_V4'; 
+        const THEME_KEY = 'LLM_RPG_THEME_PREF'; 
+        const MAX_HISTORY_ROUNDS = 10; 
+        
+        let conversationHistory = [];
+
+        const gameWindow = document.getElementById('game-window');
+        const inputArea = document.getElementById('input-area');
+        const setupPanel = document.getElementById('setup-panel');
+        const playerInput = document.getElementById('player-input');
+        const sendBtn = document.getElementById('send-btn');
+        const themeBtn = document.getElementById('theme-toggle-btn');
+        const saveBtn = document.getElementById('save-btn');
+        const loadBtn = document.getElementById('load-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        const randomData = {
+            worlds: ["賽博龐克反烏托邦，由巨型企業統治，充滿霓虹燈與人體改造", "高魔奇幻世界，人類、精靈與矮人正在抵抗深淵惡魔的入侵", "克蘇魯神話背景的1920年代迷霧小鎮，人們經常離奇失蹤", "末日廢土，核戰後的地球充滿變異生物與輻射風暴", "修仙世界，靈氣復甦的時代，凡人皆渴望踏上仙途", "蒸汽龐克風格的維多利亞帝國，飛艇滿天，機械齒輪驅動一切"],
+            personas: ["失去記憶的退役特種兵，身手矯健但患有PTSD", "天賦異稟但遭到學院放逐的魔法學徒，性格有些孤僻", "帶著神秘詛咒的沒落貴族，只要見血就會陷入狂暴", "只為金錢賣命的冷酷賞金獵人，其實內心渴望平靜的生活", "掌握遠古科技的遺跡獵人，隨身帶著一把巨大的特製扳手", "天生無法修煉的廢材少爺，但意外獲得了上古魔尊的傳承"],
+            companions: ["一隻會說話且性格毒舌的黑貓", "忠心耿耿但外殼生鏽的生化機械犬", "來歷不明、不愛說話的白髮少女", "滿嘴謊言、貪財的哥布林盜賊", "一個只剩下靈魂，寄宿在戒指裡的老者", "無"],
+            items: ["一把發出微光的等離子匕首、兩罐營養劑", "父親留下的懷錶 (裡面藏著地圖)、一把銀製匕首", "幾瓶來歷不明的暗紅色藥水、一本破舊法典", "一本寫滿古怪符號的筆記本、提燈、左輪手槍", "一把生鏽鐵劍、一個裝著劣質麥酒的水壺", "一枚會發熱的神祕玉佩、幾張辟邪符"]
+        };
+
+        document.getElementById('auto-gen-btn').addEventListener('click', () => {
+            const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+            document.getElementById('setup-world').value = pick(randomData.worlds);
+            document.getElementById('setup-persona').value = pick(randomData.personas);
+            document.getElementById('setup-companion').value = pick(randomData.companions);
+            document.getElementById('setup-items').value = pick(randomData.items);
+        });
+
+        function buildSystemPrompt() {
+            const world = document.getElementById('setup-world').value || '標準中世紀奇幻世界';
+            const persona = document.getElementById('setup-persona').value || '等級 1 的平民流浪者';
+            const companion = document.getElementById('setup-companion').value || '無';
+            const items = document.getElementById('setup-items').value || '粗糙的布衣';
+
+            return {
+                role: "system",
+                content: `你是一個硬核的文字 RPG 遊戲大師 (Game Master)。
+規則：
+1. 根據玩家的行動推進劇情，描述環境、NPC反應和結果。
+2. 維持沉浸式的小說風格描述。
+3. 適當使用 Markdown 格式（如粗體標示物品或地名、引號標示對話、清單列出選項）來增加文字的易讀性。
+4. 回應結束時，請給予 2-3 個暗示選項，或讓玩家自由發揮。
+5. 必須使用正體中文回答。
+
+【當前遊戲設定】
+世界觀：${world}
+玩家人設：${persona}
+隨從/同伴：${companion}
+隨身物品：${items}
+
+現在請根據以上設定，為玩家生成一個引人入勝的開場情境，並等待玩家行動。`
+            };
+        }
+
+        function initTheme() {
+            const savedTheme = localStorage.getItem(THEME_KEY);
+            if (savedTheme === 'dark') {
+                document.body.classList.add('dark-theme');
+                updateThemeButtonText(true);
+            } else {
+                updateThemeButtonText(false);
+            }
+        }
+
+        function updateThemeButtonText(isDark) { themeBtn.innerHTML = isDark ? '☀️ 明亮模式' : '🌙 暗黑模式'; }
+
+        themeBtn.addEventListener('click', () => {
+            const isDarkMode = document.body.classList.toggle('dark-theme');
+            localStorage.setItem(THEME_KEY, isDarkMode ? 'dark' : 'light');
+            updateThemeButtonText(isDarkMode);
+        });
+
+        function switchMode(toGame) {
+            setupPanel.style.display = toGame ? 'none' : 'flex';
+            gameWindow.style.display = toGame ? 'block' : 'none';
+            inputArea.style.display = toGame ? 'flex' : 'none';
+            saveBtn.style.display = toGame ? 'flex' : 'none';
+            restartBtn.style.display = toGame ? 'flex' : 'none';
+        }
+
+        function appendMessage(role, text, isStream = false) {
+            let msgDiv = document.createElement('div');
+            msgDiv.className = `message ${role}-msg`;
+            let prefixText = role === 'user' ? '你' : (role === 'ai' ? 'DM' : '系統');
+            
+            if (isStream) {
+                msgDiv.innerHTML = `<strong class="prefix">${prefixText}</strong><div class="content"></div>`;
+                gameWindow.appendChild(msgDiv);
+                return msgDiv.querySelector('.content');
+            } else {
+                const formattedContent = text ? (role === 'system' ? `<span class="content">${text}</span>` : `<div class="content">${marked.parse(text)}</div>`) : '';
+                msgDiv.innerHTML = `<strong class="prefix">${prefixText}</strong>${formattedContent}`;
+                gameWindow.appendChild(msgDiv);
+                gameWindow.scrollTop = gameWindow.scrollHeight;
+                return null;
+            }
+        }
+
+        function getPrunedMessages() {
+            let messagesToSend = [conversationHistory[0]]; 
+            let chatHistory = conversationHistory.slice(1); 
+            const keepMessagesCount = MAX_HISTORY_ROUNDS * 2; 
+            
+            if (chatHistory.length > keepMessagesCount) {
+                messagesToSend = messagesToSend.concat(chatHistory.slice(-keepMessagesCount));
+            } else {
+                messagesToSend = messagesToSend.concat(chatHistory);
+            }
+            return messagesToSend;
+        }
+
+        function autoSaveGame() {
+            if(conversationHistory.length > 1) {
+                localStorage.setItem(SAVE_KEY, JSON.stringify(conversationHistory));
+            }
+        }
+
+        async function sendAction(isInitial = false) {
+            const actionText = playerInput.value.trim();
+            if (!actionText && !isInitial) return; 
+            
+            if (actionText) {
+                appendMessage('user', actionText);
+                conversationHistory.push({ role: "user", content: actionText });
+                autoSaveGame(); 
+            }
+            
+            playerInput.value = '';
+            playerInput.disabled = true;
+            sendBtn.disabled = true;
+            const originalPlaceholder = playerInput.placeholder;
+            playerInput.placeholder = "DM 正在推進世界發展...";
+
+            const streamContentSpan = appendMessage('ai', '', true);
+            let fullAiResponse = "";
+            const messagesApiSees = getPrunedMessages();
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+                    body: JSON.stringify({ model: MODEL_NAME, messages: messagesApiSees, stream: true, temperature: 0.7, max_tokens: 1200 })
+                });
+
+                if (!response.ok) throw new Error(`API 錯誤: ${response.status}`);
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n').filter(line => line.trim() !== '');
+                    for (const line of lines) {
+                        if (line.includes('[DONE]')) break;
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.replace('data: ', ''));
+                                const delta = data.choices[0].delta.content;
+                                if (delta) {
+                                    fullAiResponse += delta;
+                                    streamContentSpan.innerHTML = marked.parse(fullAiResponse);
+                                    gameWindow.scrollTop = gameWindow.scrollHeight; 
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                }
+                conversationHistory.push({ role: "assistant", content: fullAiResponse });
+                autoSaveGame(); 
+
+            } catch (error) {
+                streamContentSpan.innerHTML = marked.parse(`❌ 連線發生錯誤：${error.message}`);
+                if (actionText) conversationHistory.pop(); 
+            } finally {
+                playerInput.disabled = false;
+                sendBtn.disabled = false;
+                playerInput.placeholder = originalPlaceholder;
+                playerInput.focus();
+            }
+        }
+
+        document.getElementById('start-adv-btn').addEventListener('click', () => {
+            const systemPrompt = buildSystemPrompt();
+            conversationHistory = [systemPrompt];
+            gameWindow.innerHTML = '';
+            switchMode(true);
+            appendMessage('system', '世界構建完成，冒險即將開始...');
+            setTimeout(() => sendAction(true), 800);
+        });
+
+        document.getElementById('save-btn').addEventListener('click', () => {
+            autoSaveGame();
+            appendMessage('system', '💾 遊戲進度已手動存檔。');
+        });
+
+        function loadSavedGame() {
+            const savedData = localStorage.getItem(SAVE_KEY);
+            if (savedData) {
+                try {
+                    conversationHistory = JSON.parse(savedData);
+                    gameWindow.innerHTML = ''; 
+                    switchMode(true);
+                    appendMessage('system', '📂 已接續先前的冒險進度。');
+                    for(let i = 1; i < conversationHistory.length; i++) {
+                        const msg = conversationHistory[i];
+                        if (msg.role !== 'system') {
+                            appendMessage(msg.role === 'user' ? 'user' : 'ai', msg.content);
+                        }
+                    }
+                } catch (e) {
+                    alert('讀取存檔失敗！');
+                }
+            }
+        }
+
+        document.getElementById('load-btn').addEventListener('click', () => {
+            if(localStorage.getItem(SAVE_KEY)) loadSavedGame();
+            else alert('找不到存檔紀錄！');
+        });
+
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            if(confirm('確定要放棄當前進度並重新建立世界嗎？目前的存檔將會被清除。')) {
+                localStorage.removeItem(SAVE_KEY); 
+                conversationHistory = [];
+                switchMode(false);
+            }
+        });
+
+        sendBtn.addEventListener('click', () => sendAction());
+        playerInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendAction(); });
+
+        window.onload = () => {
+            initTheme(); 
+            const hasSave = localStorage.getItem(SAVE_KEY);
+            
+            if (hasSave) {
+                if(confirm("💾 系統偵測到你有未完成的冒險進度，是否要直接繼續？\n\n(若選擇「取消」，你可重新建立世界，或稍後再手動點擊「讀取」)")) {
+                    loadSavedGame();
+                } else {
+                    loadBtn.style.opacity = "1";
+                    loadBtn.title = "手動讀取存檔";
+                }
+            } else {
+                loadBtn.style.opacity = "0.5";
+                loadBtn.title = "目前沒有存檔";
+            }
+        };
+    </script>
+</body>
+</html>
